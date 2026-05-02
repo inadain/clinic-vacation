@@ -76,6 +76,9 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 .mnav-btn{background:var(--bg);border:none;border-radius:8px;width:38px;height:38px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 
 /* ── Calendar ── */
+.cal-filter-tabs{display:flex;gap:6px;margin-bottom:12px}
+.cal-filter-btn{padding:6px 16px;border-radius:99px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s}
+.cal-filter-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
 .cal-wrap{background:#fff;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
 .cal-hdr{padding:9px 0;text-align:center;font-size:11px;font-weight:600;color:var(--muted);background:#F9FAFB;border-bottom:1px solid var(--border)}
@@ -278,6 +281,11 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
         <h2 id="admin-month-label"></h2>
         <button class="mnav-btn" onclick="changeMonth(1)">›</button>
       </div>
+      <div class="cal-filter-tabs">
+        <button class="cal-filter-btn active" id="cf-all"   onclick="switchCalFilter('all')">全体</button>
+        <button class="cal-filter-btn"        id="cf-nurse" onclick="switchCalFilter('nurse')">看護師</button>
+        <button class="cal-filter-btn"        id="cf-clerk" onclick="switchCalFilter('clerk')">事務</button>
+      </div>
       <div class="legend" id="admin-legend"></div>
       <div id="admin-calendar" class="cal-wrap"></div>
     </div>
@@ -381,6 +389,7 @@ const S = {
   allReqs: {},      // day → [{name,role,type,color}]
   reqYear: null, reqMonth: null,
   adminYear: null, adminMonth: null,
+  calFilter: 'all',
 };
 
 const COLORS = ['#E91E63','#9C27B0','#3F51B5','#2196F3','#009688','#4CAF50','#FF9800','#FF5722','#795548','#607D8B'];
@@ -808,11 +817,28 @@ async function loadAllReqs() {
   }
 }
 
+function filterReqs(reqs) {
+  if (S.calFilter === 'nurse') return reqs.filter(r => r.role && r.role.includes('看護'));
+  if (S.calFilter === 'clerk') return reqs.filter(r => r.role && r.role.includes('事務'));
+  return reqs;
+}
+
+function switchCalFilter(f) {
+  S.calFilter = f;
+  ['all','nurse','clerk'].forEach(k => {
+    document.getElementById('cf-'+k).classList.toggle('active', k===f);
+  });
+  renderAdminCal();
+}
+
 function renderAdminCal() {
   document.getElementById('admin-month-label').textContent = `${S.adminYear}年${S.adminMonth}月`;
 
-  // Legend
-  const visEmp = S.employees.filter(e => !e.is_admin);
+  // Legend（フィルターに合わせて表示）
+  const visEmp = S.employees.filter(e => !e.is_admin && (
+    S.calFilter === 'all' ? true :
+    S.calFilter === 'nurse' ? e.role.includes('看護') : e.role.includes('事務')
+  ));
   document.getElementById('admin-legend').innerHTML =
     visEmp.map(e => `<div class="leg-item"><div class="emp-dot" style="background:${e._color};width:18px;height:18px;font-size:8px">${e.name[0]}</div>${e.name}</div>`).join('') +
     `<div class="leg-item" style="margin-left:auto">
@@ -833,7 +859,7 @@ function renderAdminCal() {
     const isToday = y===today.getFullYear() && m===today.getMonth()+1 && d===today.getDate();
     let cls = 'cal-cell';
     if (dow===0) cls+=' sun'; if (dow===6) cls+=' sat'; if (isToday) cls+=' today';
-    const reqs = S.allReqs[d] || [];
+    const reqs = filterReqs(S.allReqs[d] || []);
     const dots = reqs.map(r => {
       const emp = S.employees.find(e => e.employee_id === r.employee_id);
       const dispName = emp ? emp.name : r.name;
@@ -859,7 +885,7 @@ function adminStatusBadge(status) {
 }
 
 function openAdminDayModal(day) {
-  const reqs = S.allReqs[day] || [];
+  const reqs = filterReqs(S.allReqs[day] || []);
   const date = new Date(S.adminYear, S.adminMonth-1, day);
   if (reqs.length === 0) { toast('この日の申請はありません'); return; }
   const list = reqs.map(r => {
