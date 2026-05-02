@@ -59,7 +59,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 
 /* ── Tab nav ── */
 .tab-nav{background:#fff;border-bottom:1px solid var(--border);display:flex;position:sticky;top:56px;z-index:99}
-.tab-btn{flex:1;padding:13px 6px;background:none;border:none;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}
+.tab-btn{flex:1;padding:11px 4px;background:none;border:none;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}
 .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
 
 /* ── Main content ── */
@@ -95,7 +95,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 .chip-am{background:var(--gozen)}
 .chip-pm{background:var(--gogo)}
 .emp-dots{display:flex;flex-wrap:wrap;gap:2px;margin-top:2px}
-.emp-dot{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;flex-shrink:0}
+.emp-dot{height:18px;padding:0 5px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0;white-space:nowrap}
 
 /* ── Legend ── */
 .legend{display:flex;gap:12px;padding:11px 16px;background:#fff;border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:14px;flex-wrap:wrap}
@@ -397,6 +397,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   S.sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
+  // Enter key login (always register)
+  document.getElementById('l-pw').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
+  document.getElementById('l-id').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('l-pw').focus(); });
+
   // Check first run
   const { count } = await S.sb.from('employees').select('*', { count: 'exact', head: true });
   if (count === 0) { showPage('page-setup'); return; }
@@ -419,9 +423,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   showPage('page-login');
-
-  document.getElementById('l-pw').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
-  document.getElementById('l-id').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('l-pw').focus(); });
 });
 
 // =============================================
@@ -801,7 +802,7 @@ function renderAdminCal() {
     const reqs = S.allReqs[d] || [];
     const dots = reqs.map(r => {
       const bdr = r.type==='午前半休'?`border:2px solid var(--gozen)`:r.type==='午後半休'?`border:2px solid var(--gogo)`:'';
-      return `<div class="emp-dot" style="background:${r.color};${bdr}" title="${r.name}：${r.type}">${r.name[0]}</div>`;
+      return `<div class="emp-dot" style="background:${r.color};${bdr}" title="${r.name}：${r.type}">${r.name.slice(0,2)}</div>`;
     }).join('');
     const cnt = reqs.length > 0 ? `<div style="font-size:9px;color:var(--muted)">${reqs.length}件</div>` : '';
     html += `<div class="${cls}" onclick="openAdminDayModal(${d})">
@@ -888,7 +889,7 @@ function renderEmpTable() {
     </tr>`).join('');
   document.getElementById('emp-table-wrap').innerHTML = `
     <table class="emp-tbl">
-      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>パスワード</th><th>操作</th></tr></thead>
+      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>初期PW</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
