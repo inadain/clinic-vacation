@@ -267,6 +267,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
     <button class="tab-btn active" id="tab-cal" onclick="switchTab('cal')">📅 カレンダー</button>
     <button class="tab-btn" id="tab-emp" onclick="switchTab('emp')">👥 従業員管理</button>
     <button class="tab-btn" id="tab-qr" onclick="switchTab('qr')">📱 QRコード</button>
+    <button class="tab-btn" id="tab-account" onclick="switchTab('account')">🔑 設定</button>
   </div>
   <div class="main">
 
@@ -322,6 +323,20 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
         <button class="btn btn-outline" onclick="document.getElementById('import-file').click()">
           📂 ファイルを選択（CSV / Excel）
         </button>
+      </div>
+    </div>
+
+    <!-- Admin account settings -->
+    <div id="content-account" class="hidden">
+      <div class="card">
+        <div class="card-hdr"><h2>管理者パスワード変更</h2></div>
+        <div class="card-body">
+          <div class="fg"><label>現在のパスワード</label><input id="adm-pw-cur" type="password" placeholder="現在のパスワード"></div>
+          <div class="fg"><label>新しいパスワード（4文字以上）</label><input id="adm-pw-new" type="password" placeholder="新しいパスワード"></div>
+          <div class="fg"><label>新しいパスワード（確認）</label><input id="adm-pw-new2" type="password" placeholder="もう一度入力"></div>
+          <div id="adm-pw-err" style="color:var(--red);font-size:13px;display:none;margin-bottom:10px"></div>
+          <button class="btn btn-primary" onclick="changeAdminPassword()">変更する</button>
+        </div>
       </div>
     </div>
 
@@ -535,6 +550,29 @@ async function showEmployeeView() {
   await loadMyReqs();
   await loadNote();
   renderEmpCal();
+}
+
+async function changeAdminPassword() {
+  const cur  = document.getElementById('adm-pw-cur').value;
+  const next = document.getElementById('adm-pw-new').value;
+  const next2= document.getElementById('adm-pw-new2').value;
+  const errEl= document.getElementById('adm-pw-err');
+  const err  = msg => { errEl.textContent=msg; errEl.style.display='block'; };
+  errEl.style.display='none';
+  if (!cur||!next||!next2) return err('すべて入力してください');
+  if (next.length < 4) return err('新しいパスワードは4文字以上');
+  if (next !== next2) return err('新しいパスワードが一致しません');
+  const curHash = await sha256(cur);
+  const { data } = await S.sb.from('employees')
+    .select('id').eq('employee_id', S.user.employee_id).eq('password_hash', curHash).single();
+  if (!data) return err('現在のパスワードが正しくありません');
+  const { error } = await S.sb.from('employees')
+    .update({ password_hash: await sha256(next), plain_password: next }).eq('employee_id', S.user.employee_id);
+  if (error) return err('エラーが発生しました');
+  S.user.password_hash = await sha256(next);
+  localStorage.setItem('clinic_sess', JSON.stringify(S.user));
+  ['adm-pw-cur','adm-pw-new','adm-pw-new2'].forEach(id => { document.getElementById(id).value=''; });
+  toast('パスワードを変更しました');
 }
 
 function openChangePwModal() {
@@ -816,7 +854,7 @@ async function changeMonth(delta) {
 }
 
 function switchTab(tab) {
-  ['cal','emp','qr'].forEach(t => {
+  ['cal','emp','qr','account'].forEach(t => {
     document.getElementById(`content-${t}`).classList.toggle('hidden', t!==tab);
     document.getElementById(`tab-${t}`).classList.toggle('active', t===tab);
   });
@@ -841,7 +879,8 @@ function renderEmpTable() {
         </div>
       </td>
       <td><span class="role-badge ${e.role==='医療事務'?'badge-jimu':'badge-kango'}">${e.role}</span></td>
-      <td style="font-family:monospace;font-size:12px">${e.employee_id}</td>
+      <td style="font-family:monospace;font-size:13px">${e.employee_id}</td>
+      <td style="font-family:monospace;font-size:13px">${e.plain_password || e.employee_id}</td>
       <td>
         <button class="btn btn-outline btn-sm" onclick="openEditModal('${e.employee_id}')">編集</button>
         <button class="btn btn-sm" style="background:#FEE2E2;color:var(--red);border:none;margin-left:4px" onclick="deactivate('${e.employee_id}','${e.name}')">削除</button>
@@ -849,7 +888,7 @@ function renderEmpTable() {
     </tr>`).join('');
   document.getElementById('emp-table-wrap').innerHTML = `
     <table class="emp-tbl">
-      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>操作</th></tr></thead>
+      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>パスワード</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -868,7 +907,7 @@ async function addEmployee() {
   const finalPw = pw || id;
   if (finalPw.length < 4) { toast('パスワードは4文字以上にしてください'); return; }
   const hash = await sha256(finalPw);
-  const { error } = await S.sb.from('employees').insert({ employee_id:id, password_hash:hash, name, role, is_admin:false, active:true });
+  const { error } = await S.sb.from('employees').insert({ employee_id:id, password_hash:hash, name, role, is_admin:false, active:true, plain_password:finalPw });
   if (error) { toast(error.code==='23505' ? 'この従業員IDは既に使われています' : 'エラー: '+error.message); return; }
   ['ne-id','ne-name','ne-pw'].forEach(id => { document.getElementById(id).value=''; });
   toggleAddForm();
@@ -907,6 +946,7 @@ async function saveEmployee(empId) {
   if (pw) {
     if (pw.length < 4) { toast('パスワードは4文字以上'); return; }
     updates.password_hash = await sha256(pw);
+    updates.plain_password = pw;
   }
   const { error } = await S.sb.from('employees').update(updates).eq('employee_id', empId);
   if (error) { toast('エラーが発生しました'); return; }
@@ -1017,7 +1057,7 @@ async function executeImport() {
     const pw = r[3] ? String(r[3]).trim() : '';
     const finalPw = pw || id; // 空欄はIDをデフォルトパスワードに
     const { error } = await S.sb.from('employees').insert({
-      employee_id: id, password_hash: await sha256(finalPw), name, role, is_admin: false, active: true
+      employee_id: id, password_hash: await sha256(finalPw), name, role, is_admin: false, active: true, plain_password: finalPw
     });
     if (error) ng++; else ok++;
   }
