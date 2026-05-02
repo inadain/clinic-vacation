@@ -8,6 +8,7 @@
   <title>休暇申請システム</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -201,11 +202,11 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
   <div class="white-card">
     <div class="card-logo">
       <div class="logo-icon">🏥</div>
-      <h1 id="clinic-name-display">休暇申請システム</h1>
-      <p>従業員IDとパスワードを入力してください</p>
+      <h1 id="clinic-name-display">いなだ医院　休暇申請</h1>
+      <p>従業員ID（4桁）とパスワードを入力してください</p>
     </div>
     <div id="login-err" class="err-box"></div>
-    <div class="fg"><label>従業員ID</label><input id="l-id" type="text" placeholder="例：emp001" autocapitalize="none" autocomplete="username"></div>
+    <div class="fg"><label>従業員ID（4桁）</label><input id="l-id" type="text" placeholder="例：0001" maxlength="4" inputmode="numeric" autocapitalize="none" autocomplete="username"></div>
     <div class="fg"><label>パスワード</label><input id="l-pw" type="password" placeholder="パスワード" autocomplete="current-password"></div>
     <button class="btn btn-primary" id="login-btn" onclick="login()">ログイン</button>
   </div>
@@ -233,6 +234,15 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
     <div class="status-wrap">
       <h3>申請状況</h3>
       <div class="status-row" id="status-row"><span style="color:var(--muted);font-size:13px">申請はありません</span></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><h2>特記事項・連絡事項</h2></div>
+      <div class="card-body">
+        <div class="fg" style="margin-bottom:10px">
+          <textarea id="emp-note" rows="4" placeholder="例：○日は午前のみ出勤予定&#10;○日前後は連続休暇希望&#10;その他、申請に関する補足があればご記入ください"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveNote()">特記事項を保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -274,7 +284,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
         <div id="add-emp-form" class="add-form hidden" style="margin:0 16px 16px">
           <h3>新規従業員を追加</h3>
           <div class="fg-row">
-            <div class="fg"><label>従業員ID</label><input id="ne-id" type="text" placeholder="例：emp004" autocapitalize="none"></div>
+            <div class="fg"><label>従業員ID（4桁）</label><input id="ne-id" type="text" placeholder="例：0001" maxlength="4" inputmode="numeric" autocapitalize="none"></div>
             <div class="fg"><label>氏名</label><input id="ne-name" type="text" placeholder="例：田中 花子"></div>
           </div>
           <div class="fg-row">
@@ -286,6 +296,24 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
             <button class="btn btn-outline" style="flex:1" onclick="toggleAddForm()">キャンセル</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Import card -->
+    <div id="import-card" class="card hidden">
+      <div class="card-hdr">
+        <h2>一括インポート（CSV / Excel）</h2>
+        <button class="btn btn-outline btn-sm" onclick="downloadTemplate()">📄 テンプレートDL</button>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+          列の順番：<strong>従業員ID（4桁）/ 氏名 / 役職 / パスワード</strong><br>
+          役職は「医療事務」または「外来看護師」と記入してください。
+        </p>
+        <input type="file" id="import-file" accept=".csv,.xlsx,.xls" onchange="importEmployees(event)" style="display:none">
+        <button class="btn btn-outline" onclick="document.getElementById('import-file').click()">
+          📂 ファイルを選択（CSV / Excel）
+        </button>
       </div>
     </div>
 
@@ -497,7 +525,25 @@ async function showEmployeeView() {
 
   document.getElementById('emp-month-label').textContent = `${S.reqYear}年${S.reqMonth}月`;
   await loadMyReqs();
+  await loadNote();
   renderEmpCal();
+}
+
+async function loadNote() {
+  const { data } = await S.sb.from('vacation_notes')
+    .select('note').eq('employee_id', S.user.employee_id)
+    .eq('year', S.reqYear).eq('month', S.reqMonth).single();
+  document.getElementById('emp-note').value = data ? data.note : '';
+}
+
+async function saveNote() {
+  const note = document.getElementById('emp-note').value.trim();
+  const { error } = await S.sb.from('vacation_notes').upsert(
+    { employee_id: S.user.employee_id, year: S.reqYear, month: S.reqMonth, note },
+    { onConflict: 'employee_id,year,month' }
+  );
+  if (error) { toast('エラーが発生しました'); return; }
+  toast('特記事項を保存しました');
 }
 
 async function loadMyReqs() {
@@ -610,19 +656,29 @@ async function showAdminView() {
 async function loadEmployees() {
   const { data } = await S.sb.from('employees').select('*').eq('active', true).order('created_at');
   S.employees = data || [];
+  S.allNotes = {};
   S.employees.forEach((e, i) => { e._color = COLORS[i % COLORS.length]; });
   renderEmpTable();
 }
 
 async function loadAllReqs() {
-  const { data } = await S.sb.from('vacation_requests').select('*')
-    .eq('year', S.adminYear).eq('month', S.adminMonth);
+  const [reqRes, noteRes] = await Promise.all([
+    S.sb.from('vacation_requests').select('*').eq('year', S.adminYear).eq('month', S.adminMonth),
+    S.sb.from('vacation_notes').select('*').eq('year', S.adminYear).eq('month', S.adminMonth),
+  ]);
   S.allReqs = {};
-  if (data) {
-    data.forEach(r => {
+  S.allNotes = {};
+  if (reqRes.data) {
+    reqRes.data.forEach(r => {
       if (!S.allReqs[r.day]) S.allReqs[r.day] = [];
       const emp = S.employees.find(e => e.employee_id === r.employee_id);
       S.allReqs[r.day].push({ ...r, name: emp?emp.name:r.employee_id, color: emp?emp._color:'#888', role: emp?emp.role:'' });
+    });
+  }
+  if (noteRes.data) {
+    noteRes.data.forEach(n => {
+      const emp = S.employees.find(e => e.employee_id === n.employee_id);
+      S.allNotes[n.employee_id] = { note: n.note, name: emp?emp.name:n.employee_id };
     });
   }
 }
@@ -680,9 +736,20 @@ function openAdminDayModal(day) {
         ${r.type==='全休'?'全休':r.type==='午前半休'?'午前半休':'午後半休'}
       </span>
     </li>`).join('');
+  // 特記事項がある従業員を表示
+  const notesWithReqs = reqs.filter(r => S.allNotes[r.employee_id] && S.allNotes[r.employee_id].note);
+  const notesHtml = notesWithReqs.length > 0
+    ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px">特記事項</div>
+        ${notesWithReqs.map(r=>`
+          <div style="margin-bottom:8px;padding:10px;background:#FFFBEB;border-radius:8px;border:1px solid #FDE68A">
+            <div style="font-size:12px;font-weight:700;margin-bottom:4px">${r.name}</div>
+            <div style="font-size:13px;white-space:pre-wrap">${S.allNotes[r.employee_id].note}</div>
+          </div>`).join('')}
+      </div>` : '';
   openModal(`
     <div class="modal-hdr"><h3>${S.adminMonth}月${day}日（${JA_DOW[date.getDay()]}）</h3><p>申請 ${reqs.length}件</p></div>
-    <div class="modal-body"><ul class="day-list">${list}</ul></div>
+    <div class="modal-body" style="max-height:60vh;overflow-y:auto"><ul class="day-list">${list}</ul>${notesHtml}</div>
     <div class="modal-foot"><button class="btn btn-outline" onclick="closeModal()">閉じる</button></div>
   `);
 }
@@ -701,6 +768,7 @@ function switchTab(tab) {
     document.getElementById(`content-${t}`).classList.toggle('hidden', t!==tab);
     document.getElementById(`tab-${t}`).classList.toggle('active', t===tab);
   });
+  document.getElementById('import-card').classList.toggle('hidden', tab !== 'emp');
 }
 
 // =============================================
@@ -744,6 +812,7 @@ async function addEmployee() {
   const role = document.getElementById('ne-role').value;
   const pw = document.getElementById('ne-pw').value;
   if (!id || !name || !pw) { toast('すべての項目を入力してください'); return; }
+  if (!/^\d{4}$/.test(id)) { toast('従業員IDは4桁の数字で入力してください（例：0001）'); return; }
   if (pw.length < 4) { toast('パスワードは4文字以上にしてください'); return; }
   const hash = await sha256(pw);
   const { error } = await S.sb.from('employees').insert({ employee_id:id, password_hash:hash, name, role, is_admin:false, active:true });
@@ -799,6 +868,108 @@ async function deactivate(empId, name) {
   if (error) { toast('エラーが発生しました'); return; }
   await loadEmployees();
   toast(`${name} を削除しました`);
+}
+
+// =============================================
+// CSV / EXCEL IMPORT
+// =============================================
+let importData = [];
+
+function downloadTemplate() {
+  const csv = '﻿従業員ID,氏名,役職,パスワード\n0001,田中花子,医療事務,pass1234\n0002,鈴木一郎,外来看護師,pass5678';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '従業員登録テンプレート.csv';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function parseCSV(text) {
+  const lines = text.replace(/^﻿/, '').replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  return lines.map(line => {
+    const cells = []; let inQ = false, cell = '';
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === ',' && !inQ) { cells.push(cell.trim()); cell = ''; }
+      else { cell += ch; }
+    }
+    cells.push(cell.trim());
+    return cells;
+  });
+}
+
+async function importEmployees(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  let rows = [];
+  try {
+    if (file.name.match(/\.csv$/i)) {
+      rows = parseCSV(await file.text());
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'' });
+    }
+  } catch(e) { toast('ファイルの読み込みに失敗しました'); return; }
+
+  const data = rows.slice(1).filter(r => r.length >= 4 && String(r[0]).trim());
+  if (data.length === 0) { toast('データが見つかりませんでした'); return; }
+
+  const errors = [];
+  data.forEach((r, i) => {
+    const id = String(r[0]).trim();
+    if (!/^\d{4}$/.test(id)) errors.push(`行${i+2}：IDは4桁の数字`);
+    if (!String(r[1]).trim()) errors.push(`行${i+2}：氏名が空`);
+    if (!['医療事務','外来看護師'].includes(String(r[2]).trim())) errors.push(`行${i+2}：役職は「医療事務」または「外来看護師」`);
+    if (String(r[3]).trim().length < 4) errors.push(`行${i+2}：パスワードは4文字以上`);
+  });
+
+  if (errors.length > 0) {
+    openModal(`
+      <div class="modal-hdr"><h3>エラーがあります</h3><p>修正してから再度アップロードしてください</p></div>
+      <div class="modal-body" style="max-height:260px;overflow-y:auto">
+        <ul style="list-style:none;color:var(--red);font-size:13px;line-height:2">
+          ${errors.map(e=>`<li>⚠️ ${e}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="modal-foot"><button class="btn btn-outline" onclick="closeModal()">閉じる</button></div>
+    `);
+    event.target.value = '';
+    return;
+  }
+
+  importData = data;
+  const preview = data.map(r=>`<tr><td>${String(r[0]).trim()}</td><td>${r[1]}</td><td>${r[2]}</td><td style="color:var(--muted)">••••</td></tr>`).join('');
+  openModal(`
+    <div class="modal-hdr"><h3>インポート確認</h3><p>${data.length}名を登録します</p></div>
+    <div class="modal-body" style="max-height:280px;overflow-y:auto">
+      <table class="emp-tbl">
+        <thead><tr><th>ID</th><th>氏名</th><th>役職</th><th>PW</th></tr></thead>
+        <tbody>${preview}</tbody>
+      </table>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="executeImport()">登録する</button>
+    </div>
+  `);
+}
+
+async function executeImport() {
+  closeModal();
+  let ok = 0, ng = 0;
+  for (const r of importData) {
+    const id = String(r[0]).trim(), name = String(r[1]).trim();
+    const role = String(r[2]).trim(), pw = String(r[3]).trim();
+    const { error } = await S.sb.from('employees').insert({
+      employee_id: id, password_hash: await sha256(pw), name, role, is_admin: false, active: true
+    });
+    if (error) ng++; else ok++;
+  }
+  importData = [];
+  document.getElementById('import-file').value = '';
+  await loadEmployees();
+  toast(`${ok}名を登録しました${ng>0?`（${ng}名はID重複等で失敗）`:''}`);
 }
 
 // =============================================
