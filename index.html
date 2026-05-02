@@ -801,8 +801,11 @@ function renderAdminCal() {
     if (dow===0) cls+=' sun'; if (dow===6) cls+=' sat'; if (isToday) cls+=' today';
     const reqs = S.allReqs[d] || [];
     const dots = reqs.map(r => {
+      const emp = S.employees.find(e => e.employee_id === r.employee_id);
+      const dispName = emp ? emp.name : r.name;
+      const color = emp ? emp._color : (r.color || '#888');
       const bdr = r.type==='午前半休'?`border:2px solid var(--gozen)`:r.type==='午後半休'?`border:2px solid var(--gogo)`:'';
-      return `<div class="emp-dot" style="background:${r.color};${bdr}" title="${r.name}：${r.type}">${r.name.slice(0,2)}</div>`;
+      return `<div class="emp-dot" style="background:${color};${bdr}" title="${dispName}：${r.type}">${dispName.slice(0,2)}</div>`;
     }).join('');
     const cnt = reqs.length > 0 ? `<div style="font-size:9px;color:var(--muted)">${reqs.length}件</div>` : '';
     html += `<div class="${cls}" onclick="openAdminDayModal(${d})">
