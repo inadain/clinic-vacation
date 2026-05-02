@@ -753,16 +753,25 @@ async function loadEmployees() {
 }
 
 async function loadAllReqs() {
-  const [reqRes, noteRes] = await Promise.all([
+  const [reqRes, empRes, noteRes] = await Promise.all([
     S.sb.from('vacation_requests').select('*').eq('year', S.adminYear).eq('month', S.adminMonth),
+    S.sb.from('employees').select('*').eq('active', true),
     S.sb.from('vacation_notes').select('*').eq('year', S.adminYear).eq('month', S.adminMonth),
   ]);
+
+  // 従業員マップを直接構築（S.employeesへの依存をなくす）
+  const empList = empRes.data || [];
+  empList.forEach((e, i) => { e._color = COLORS[i % COLORS.length]; });
+  S.employees = empList; // 最新状態に更新
+  const empMap = {};
+  empList.forEach(e => { empMap[e.employee_id] = e; });
+
   S.allReqs = {};
   S.allNotes = {};
   if (reqRes.data) {
     reqRes.data.forEach(r => {
       if (!S.allReqs[r.day]) S.allReqs[r.day] = [];
-      const emp = S.employees.find(e => e.employee_id === r.employee_id);
+      const emp = empMap[r.employee_id];
       S.allReqs[r.day].push({ ...r, name: emp?emp.name:r.employee_id, color: emp?emp._color:'#888', role: emp?emp.role:'' });
     });
   }
