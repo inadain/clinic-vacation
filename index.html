@@ -80,6 +80,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 .cal-filter-btn{padding:6px 16px;border-radius:99px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);transition:all .15s}
 .cal-filter-btn.active{background:var(--primary);border-color:var(--primary);color:#fff}
 .cal-wrap{background:#fff;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:14px}
+.cal-cell.locked{cursor:default;opacity:.75}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
 .cal-hdr{padding:9px 0;text-align:center;font-size:11px;font-weight:600;color:var(--muted);background:#F9FAFB;border-bottom:1px solid var(--border)}
 .cal-hdr:first-child{color:var(--red)}
@@ -233,15 +234,15 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
       </div>
       <div class="card-body hidden" style="font-size:13px;line-height:1.8;color:#374151">
         <p style="margin-bottom:10px"><strong>■ 締め切り：毎月20日厳守</strong><br>
-        20日までは原則、本フォームより提出してください。</p>
+        20日までは原則、本フォームより入力してください。</p>
         <p style="margin-bottom:10px"><strong>■ 21日以降の申し出について</strong><br>
         締め切りを過ぎた場合はフォームからは送らず、直接代表まで申し出てください。直接の申し出がない場合は、希望は通りません。</p>
         <p style="margin-bottom:10px"><strong>■ 調整について</strong><br>
         現場の運営状況により、すべての希望が通るわけではありません。あらかじめご了承ください。</p>
         <p style="margin-bottom:10px"><strong>■ 重複時の対応</strong><br>
         希望が重なった場合は、対象者同士で調整をお願いすることがあります。</p>
-        <p style="margin-bottom:0"><strong>■ 事前調整</strong><br>
-        提出前の職員間での事前調整は不要です。まずはこのフォームで希望を出してください。</p>
+        <p style="margin-bottom:0;color:#DC2626;font-weight:700"><strong>■ 事前調整</strong><br>
+        入力前の職員間での事前調整は不要です。まずはこのフォームで希望を出してください。</p>
       </div>
     </div>
     <div class="month-nav">
@@ -697,12 +698,25 @@ function empChip(req) {
   return `<span class="v-chip ${cc}">${lbl}</span>`;
 }
 
+function isDeadlinePassed() {
+  return new Date().getDate() > 20;
+}
+
 function renderEmpCal() {
   const y = S.reqYear, m = S.reqMonth;
   const days = new Date(y, m, 0).getDate();
   const first = new Date(y, m-1, 1).getDay();
   const today = new Date();
-  let html = '<div class="cal-grid">';
+  const locked = isDeadlinePassed();
+
+  let html = '';
+  if (locked) {
+    html += `<div class="info-note" style="background:#FEF2F2;border-color:#FECACA;color:#DC2626;margin-bottom:10px">
+      🔒 20日を過ぎたため、フォームからの入力を締め切りました。希望がある場合は直接代表まで申し出てください。
+    </div>`;
+  }
+
+  html += '<div class="cal-grid">';
   JA_DOW.forEach(d => { html += `<div class="cal-hdr">${d}</div>`; });
   for (let i=0; i<first; i++) html += '<div class="cal-cell empty"></div>';
   for (let d=1; d<=days; d++) {
@@ -710,7 +724,9 @@ function renderEmpCal() {
     const isToday = y===today.getFullYear() && m===today.getMonth()+1 && d===today.getDate();
     let cls = 'cal-cell';
     if (dow===0) cls+=' sun'; if (dow===6) cls+=' sat'; if (isToday) cls+=' today';
-    html += `<div class="${cls}" onclick="openEmpDayModal(${d})"><span class="day-num">${d}</span>${empChip(S.myReqs[d])}</div>`;
+    if (locked) cls+=' locked';
+    const onclick = locked ? '' : `onclick="openEmpDayModal(${d})"`;
+    html += `<div class="${cls}" ${onclick}><span class="day-num">${d}</span>${empChip(S.myReqs[d])}</div>`;
   }
   html += '</div>';
   document.getElementById('emp-calendar').innerHTML = html;
@@ -760,6 +776,7 @@ function openEmpDayModal(day) {
 }
 
 async function selectType(day, type) {
+  if (isDeadlinePassed()) { toast('締め切りを過ぎています'); return; }
   closeModal();
   const req = S.myReqs[day];
   if (req?.type === type) { await cancelReq(day); return; }
@@ -774,6 +791,7 @@ async function selectType(day, type) {
 }
 
 async function cancelReq(day) {
+  if (isDeadlinePassed()) { toast('締め切りを過ぎています'); closeModal(); return; }
   const { error } = await S.sb.from('vacation_requests').delete()
     .eq('employee_id', S.user.employee_id).eq('year', S.reqYear).eq('month', S.reqMonth).eq('day', day);
   if (error) { toast('エラーが発生しました'); return; }
