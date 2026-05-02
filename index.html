@@ -611,7 +611,7 @@ async function changePassword() {
 
   const newHash = await sha256(next);
   const { error } = await S.sb.from('employees')
-    .update({ password_hash: newHash }).eq('employee_id', S.user.employee_id);
+    .update({ password_hash: newHash, plain_password: next }).eq('employee_id', S.user.employee_id);
   if (error) return err('エラーが発生しました');
 
   S.user.password_hash = newHash;
