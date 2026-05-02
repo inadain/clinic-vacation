@@ -236,6 +236,14 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
       <div class="status-row" id="status-row"><span style="color:var(--muted);font-size:13px">申請はありません</span></div>
     </div>
     <div class="card">
+      <div class="card-hdr">
+        <h2>アカウント設定</h2>
+      </div>
+      <div class="card-body">
+        <button class="btn btn-outline" onclick="openChangePwModal()">🔑 パスワードを変更する</button>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-hdr"><h2>特記事項・連絡事項</h2></div>
       <div class="card-body">
         <div class="fg" style="margin-bottom:10px">
@@ -529,6 +537,50 @@ async function showEmployeeView() {
   renderEmpCal();
 }
 
+function openChangePwModal() {
+  openModal(`
+    <div class="modal-hdr"><h3>パスワードを変更</h3></div>
+    <div class="modal-body">
+      <div class="fg"><label>現在のパスワード</label><input id="pw-current" type="password" placeholder="現在のパスワード"></div>
+      <div class="fg"><label>新しいパスワード（4文字以上）</label><input id="pw-new" type="password" placeholder="新しいパスワード"></div>
+      <div class="fg"><label>新しいパスワード（確認）</label><input id="pw-new2" type="password" placeholder="もう一度入力"></div>
+      <div id="pw-err" style="color:var(--red);font-size:13px;display:none;margin-top:4px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="changePassword()">変更する</button>
+    </div>
+  `);
+}
+
+async function changePassword() {
+  const current = document.getElementById('pw-current').value;
+  const next    = document.getElementById('pw-new').value;
+  const next2   = document.getElementById('pw-new2').value;
+  const errEl   = document.getElementById('pw-err');
+  const err = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+
+  if (!current || !next || !next2) return err('すべて入力してください');
+  if (next.length < 4) return err('新しいパスワードは4文字以上にしてください');
+  if (next !== next2) return err('新しいパスワードが一致しません');
+
+  const currentHash = await sha256(current);
+  const { data } = await S.sb.from('employees')
+    .select('id').eq('employee_id', S.user.employee_id).eq('password_hash', currentHash).single();
+  if (!data) return err('現在のパスワードが正しくありません');
+
+  const newHash = await sha256(next);
+  const { error } = await S.sb.from('employees')
+    .update({ password_hash: newHash }).eq('employee_id', S.user.employee_id);
+  if (error) return err('エラーが発生しました');
+
+  S.user.password_hash = newHash;
+  localStorage.setItem('clinic_sess', JSON.stringify(S.user));
+  closeModal();
+  toast('パスワードを変更しました');
+}
+
 async function loadNote() {
   const { data } = await S.sb.from('vacation_notes')
     .select('note').eq('employee_id', S.user.employee_id)
@@ -813,8 +865,9 @@ async function addEmployee() {
   const pw = document.getElementById('ne-pw').value;
   if (!id || !name || !pw) { toast('すべての項目を入力してください'); return; }
   if (!/^\d{4}$/.test(id)) { toast('従業員IDは4桁の数字で入力してください（例：0001）'); return; }
-  if (pw.length < 4) { toast('パスワードは4文字以上にしてください'); return; }
-  const hash = await sha256(pw);
+  const finalPw = pw || id;
+  if (finalPw.length < 4) { toast('パスワードは4文字以上にしてください'); return; }
+  const hash = await sha256(finalPw);
   const { error } = await S.sb.from('employees').insert({ employee_id:id, password_hash:hash, name, role, is_admin:false, active:true });
   if (error) { toast(error.code==='23505' ? 'この従業員IDは既に使われています' : 'エラー: '+error.message); return; }
   ['ne-id','ne-name','ne-pw'].forEach(id => { document.getElementById(id).value=''; });
@@ -960,9 +1013,11 @@ async function executeImport() {
   let ok = 0, ng = 0;
   for (const r of importData) {
     const id = String(r[0]).trim(), name = String(r[1]).trim();
-    const role = String(r[2]).trim(), pw = String(r[3]).trim();
+    const role = String(r[2]).trim();
+    const pw = r[3] ? String(r[3]).trim() : '';
+    const finalPw = pw || id; // 空欄はIDをデフォルトパスワードに
     const { error } = await S.sb.from('employees').insert({
-      employee_id: id, password_hash: await sha256(pw), name, role, is_admin: false, active: true
+      employee_id: id, password_hash: await sha256(finalPw), name, role, is_admin: false, active: true
     });
     if (error) ng++; else ok++;
   }
