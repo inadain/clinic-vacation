@@ -148,6 +148,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 .role-badge{display:inline-block;padding:3px 7px;border-radius:6px;font-size:11px;font-weight:600}
 .badge-jimu{background:#EDE9FE;color:#6D28D9}
 .badge-kango{background:#D1FAE5;color:#065F46}
+.badge-kyotaku{background:#FEF3C7;color:#92400E}
 .badge-admin{background:#DBEAFE;color:#1E40AF}
 .add-form{background:#F9FAFB;border:2px dashed var(--border);border-radius:var(--r);padding:18px;margin-top:14px}
 .add-form h3{font-size:14px;font-weight:700;margin-bottom:14px}
@@ -282,9 +283,10 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
         <button class="mnav-btn" onclick="changeMonth(1)">›</button>
       </div>
       <div class="cal-filter-tabs">
-        <button class="cal-filter-btn active" id="cf-all"   onclick="switchCalFilter('all')">全体</button>
-        <button class="cal-filter-btn"        id="cf-nurse" onclick="switchCalFilter('nurse')">看護師</button>
-        <button class="cal-filter-btn"        id="cf-clerk" onclick="switchCalFilter('clerk')">事務</button>
+        <button class="cal-filter-btn active" id="cf-all"    onclick="switchCalFilter('all')">全体</button>
+        <button class="cal-filter-btn"        id="cf-nurse"  onclick="switchCalFilter('nurse')">看護師</button>
+        <button class="cal-filter-btn"        id="cf-clerk"  onclick="switchCalFilter('clerk')">事務</button>
+        <button class="cal-filter-btn"        id="cf-kyotaku" onclick="switchCalFilter('kyotaku')">居宅</button>
       </div>
       <div class="legend" id="admin-legend"></div>
       <div id="admin-calendar" class="cal-wrap"></div>
@@ -305,7 +307,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
             <div class="fg"><label>氏名</label><input id="ne-name" type="text" placeholder="例：田中 花子"></div>
           </div>
           <div class="fg-row">
-            <div class="fg"><label>役職</label><select id="ne-role"><option value="医療事務">医療事務</option><option value="外来看護師">外来看護師</option></select></div>
+            <div class="fg"><label>役職</label><select id="ne-role"><option value="医療事務">医療事務</option><option value="外来看護師">外来看護師</option><option value="居宅">居宅</option></select></div>
             <div class="fg"><label>パスワード</label><input id="ne-pw" type="password" placeholder="4文字以上"></div>
           </div>
           <div style="display:flex;gap:10px">
@@ -325,7 +327,7 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
       <div class="card-body">
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
           列の順番：<strong>従業員ID（4桁）/ 氏名 / 役職 / パスワード</strong><br>
-          役職は「医療事務」または「外来看護師」と記入してください。
+          役職は「医療事務」「外来看護師」または「居宅」と記入してください。
         </p>
         <input type="file" id="import-file" accept=".csv,.xlsx,.xls" onchange="importEmployees(event)" style="display:none">
         <button class="btn btn-outline" onclick="document.getElementById('import-file').click()">
@@ -818,14 +820,15 @@ async function loadAllReqs() {
 }
 
 function filterReqs(reqs) {
-  if (S.calFilter === 'nurse') return reqs.filter(r => r.role && r.role.includes('看護'));
-  if (S.calFilter === 'clerk') return reqs.filter(r => r.role && r.role.includes('事務'));
+  if (S.calFilter === 'nurse')   return reqs.filter(r => r.role && r.role.includes('看護'));
+  if (S.calFilter === 'clerk')   return reqs.filter(r => r.role && r.role.includes('事務'));
+  if (S.calFilter === 'kyotaku') return reqs.filter(r => r.role && r.role.includes('居宅'));
   return reqs;
 }
 
 function switchCalFilter(f) {
   S.calFilter = f;
-  ['all','nurse','clerk'].forEach(k => {
+  ['all','nurse','clerk','kyotaku'].forEach(k => {
     document.getElementById('cf-'+k).classList.toggle('active', k===f);
   });
   renderAdminCal();
@@ -836,8 +839,10 @@ function renderAdminCal() {
 
   // Legend（フィルターに合わせて表示）
   const visEmp = S.employees.filter(e => !e.is_admin && (
-    S.calFilter === 'all' ? true :
-    S.calFilter === 'nurse' ? e.role.includes('看護') : e.role.includes('事務')
+    S.calFilter === 'all'     ? true :
+    S.calFilter === 'nurse'   ? e.role.includes('看護') :
+    S.calFilter === 'clerk'   ? e.role.includes('事務') :
+    S.calFilter === 'kyotaku' ? e.role.includes('居宅') : true
   ));
   document.getElementById('admin-legend').innerHTML =
     visEmp.map(e => `<div class="leg-item"><div class="emp-dot" style="background:${e._color};width:18px;height:18px;font-size:8px">${e.name[0]}</div>${e.name}</div>`).join('') +
@@ -973,7 +978,7 @@ function renderEmpTable() {
           <strong>${e.name}</strong>
         </div>
       </td>
-      <td><span class="role-badge ${e.role==='医療事務'?'badge-jimu':'badge-kango'}">${e.role}</span></td>
+      <td><span class="role-badge ${e.role==='医療事務'?'badge-jimu':e.role==='居宅'?'badge-kyotaku':'badge-kango'}">${e.role}</span></td>
       <td style="font-family:monospace;font-size:13px">${e.employee_id}</td>
       <td style="font-family:monospace;font-size:13px">${e.plain_password || e.employee_id}</td>
       <td>
@@ -1021,6 +1026,7 @@ function openEditModal(empId) {
         <select id="ed-role">
           <option value="医療事務" ${e.role==='医療事務'?'selected':''}>医療事務</option>
           <option value="外来看護師" ${e.role==='外来看護師'?'selected':''}>外来看護師</option>
+          <option value="居宅" ${e.role==='居宅'?'selected':''}>居宅</option>
         </select>
       </div>
       <div class="fg"><label>新しいパスワード（変更する場合のみ）</label><input id="ed-pw" type="password" placeholder="変更しない場合は空欄"></div>
@@ -1108,7 +1114,7 @@ async function importEmployees(event) {
     const id = String(r[0]).trim();
     if (!/^\d{4}$/.test(id)) errors.push(`行${i+2}：IDは4桁の数字`);
     if (!String(r[1]).trim()) errors.push(`行${i+2}：氏名が空`);
-    if (!['医療事務','外来看護師'].includes(String(r[2]).trim())) errors.push(`行${i+2}：役職は「医療事務」または「外来看護師」`);
+    if (!['医療事務','外来看護師','居宅'].includes(String(r[2]).trim())) errors.push(`行${i+2}：役職は「医療事務」「外来看護師」または「居宅」`);
     if (String(r[3]).trim().length < 4) errors.push(`行${i+2}：パスワードは4文字以上`);
   });
 
