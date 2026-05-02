@@ -988,13 +988,30 @@ function renderEmpTable() {
     </tr>`).join('');
   document.getElementById('emp-table-wrap').innerHTML = `
     <table class="emp-tbl">
-      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>初期PW</th><th>操作</th></tr></thead>
+      <thead><tr><th>氏名</th><th>役職</th><th>ID</th><th>現PW</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
 
+function getNextEmpId() {
+  const ids = S.employees
+    .filter(e => !e.is_admin && /^\d{4}$/.test(e.employee_id))
+    .map(e => parseInt(e.employee_id, 10))
+    .sort((a, b) => a - b);
+  let next = 1;
+  for (const id of ids) {
+    if (id > next) break;
+    if (id === next) next++;
+  }
+  return String(next).padStart(4, '0');
+}
+
 function toggleAddForm() {
-  document.getElementById('add-emp-form').classList.toggle('hidden');
+  const form = document.getElementById('add-emp-form');
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    document.getElementById('ne-id').value = getNextEmpId();
+  }
 }
 
 async function addEmployee() {
