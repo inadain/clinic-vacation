@@ -1019,6 +1019,7 @@ function renderEmpTable() {
       <td style="font-family:monospace;font-size:13px">${e.plain_password || e.employee_id}</td>
       <td>
         <button class="btn btn-outline btn-sm" onclick="openEditModal('${e.employee_id}')">編集</button>
+        <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:none;margin-left:4px" onclick="resetPassword('${e.employee_id}','${e.name}')">PW初期化</button>
         <button class="btn btn-sm" style="background:#FEE2E2;color:var(--red);border:none;margin-left:4px" onclick="deactivate('${e.employee_id}','${e.name}')">削除</button>
       </td>
     </tr>`).join('');
@@ -1107,6 +1108,15 @@ async function saveEmployee(empId) {
   closeModal();
   await loadEmployees();
   toast(`${name} を更新しました`);
+}
+
+async function resetPassword(empId, name) {
+  if (!confirm(`${name} のパスワードを初期値（従業員ID: ${empId}）にリセットしますか？`)) return;
+  const hash = await sha256(empId);
+  const { error } = await S.sb.from('employees').update({ password_hash: hash, plain_password: empId }).eq('employee_id', empId);
+  if (error) { toast('エラーが発生しました'); return; }
+  await loadEmployees();
+  toast(`${name} のパスワードを初期値にリセットしました`);
 }
 
 async function deactivate(empId, name) {
