@@ -140,9 +140,13 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
 .opt-jk{color:var(--jikan)}.opt-jk.selected,.opt-jk:hover{background:#F5F3FF;border-color:var(--jikan)}
 .opt-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .opt-z .opt-icon{background:#FFF5F5}.opt-am .opt-icon{background:#FFFBEB}.opt-pm .opt-icon{background:#EFF6FF}.opt-jk .opt-icon{background:#F5F3FF}
-.hour-btns{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0 4px}
-.hour-btn{width:44px;height:36px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-size:13px;font-weight:700;cursor:pointer;color:var(--muted)}
-.hour-btn.selected,.hour-btn:active{background:var(--jikan);border-color:var(--jikan);color:#fff}
+.time-picker{width:100%;padding:10px 0 4px;display:flex;flex-direction:column;gap:8px}
+.time-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text)}
+.time-row span{min-width:30px;color:var(--muted)}
+.time-sel{padding:6px 8px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-size:14px;font-weight:700;color:var(--text);cursor:pointer}
+.time-sel:focus{outline:none;border-color:var(--jikan)}
+.time-duration{font-size:12px;color:var(--jikan);font-weight:700;text-align:right}
+.time-submit{width:100%;margin-top:4px;padding:10px;border-radius:10px;border:none;background:var(--jikan);color:#fff;font-size:14px;font-weight:700;cursor:pointer}
 .opt-label{font-size:14px;font-weight:700}
 .opt-desc{font-size:11px;color:var(--muted);font-weight:400}
 
@@ -688,7 +692,7 @@ async function loadMyReqs() {
   ]);
   S.myReqs = {};
   if (monthRes.data) monthRes.data.forEach(r => {
-    S.myReqs[r.day] = { type: r.type, status: r.status||'pending', id: r.id, hours: r.hours };
+    S.myReqs[r.day] = { type: r.type, status: r.status||'pending', id: r.id, hours: r.hours, start_time: r.start_time, end_time: r.end_time };
   });
   S.usedHours = (yearRes.data || []).reduce((sum, r) => sum + (r.hours || 0), 0);
   renderStatusSummary();
@@ -718,7 +722,7 @@ function renderStatusSummary() {
 function empChip(req) {
   if (!req) return '';
   const cc = req.type==='全休'?'chip-z':req.type==='午前半休'?'chip-am':req.type==='時間休'?'chip-jk':'chip-pm';
-  const lbl = req.type==='全休'?'全休':req.type==='午前半休'?'午前':req.type==='時間休'?`${req.hours||'?'}h`:'午後';
+  const lbl = req.type==='全休'?'全休':req.type==='午前半休'?'午前':req.type==='時間休'?(req.start_time&&req.end_time?`${req.start_time}〜${req.end_time}`:`${req.hours||'?'}h`):'午後';
   if (req.status==='approved') return `<span class="v-chip ${cc}">✅${lbl}</span>`;
   if (req.status==='rejected') return `<span class="v-chip" style="background:#9CA3AF">❌${lbl}</span>`;
   return `<span class="v-chip ${cc}">${lbl}</span>`;
@@ -779,14 +783,19 @@ function openEmpDayModal(day) {
   const statusNote = status==='rejected'
     ? `<div class="info-note" style="background:#FEF2F2;border-color:#FECACA;color:var(--red)">❌ この申請は却下されました。再申請できます。</div>` : '';
   const cancelRow = type ? `<div style="padding:0 18px 16px"><button class="btn" style="background:#FEE2E2;color:var(--red);border:none" onclick="cancelReq(${day})">🗑️ この日の申請を取消</button></div>` : '';
-  const curHours = req?.hours || 0;
-  const remaining = 165 - S.usedHours + (type==='時間休' ? curHours : 0);
-  const hourBtns = Array.from({length:8},(_,i)=>i+1).map(h =>
-    `<button class="hour-btn ${type==='時間休'&&curHours===h?'selected':''}" onclick="selectType(${day},'時間休',${h})">${h}h</button>`
-  ).join('');
+  const curStart = req?.start_time || '09:00';
+  const curEnd   = req?.end_time   || '10:00';
+  const remaining = 165 - S.usedHours + (type==='時間休' ? (req?.hours||0) : 0);
+
+  const hOpts = Array.from({length:13},(_,i)=>i+7).map(h=>
+    `<option value="${h}" ${Number(curStart.split(':')[0])===h&&type==='時間休'?'selected':''}>${String(h).padStart(2,'0')}</option>`).join('');
+  const mOpts = m => [0,15,30,45].map(v=>
+    `<option value="${v}" ${Number(m)===v?'selected':''}>${String(v).padStart(2,'0')}</option>`).join('');
+  const ehOpts = Array.from({length:13},(_,i)=>i+7).map(h=>
+    `<option value="${h}" ${Number(curEnd.split(':')[0])===h&&type==='時間休'?'selected':''}>${String(h).padStart(2,'0')}</option>`).join('');
 
   openModal(`
-    <div class="modal-hdr"><h3>${S.reqMonth}月${day}日（${dow}）</h3><p>${type?`現在：${type}${type==='時間休'?` ${curHours}時間`:''}`:'申請なし'}</p></div>
+    <div class="modal-hdr"><h3>${S.reqMonth}月${day}日（${dow}）</h3><p>${type?`現在：${type}${type==='時間休'?` ${curStart}〜${curEnd}`:''}`:'申請なし'}</p></div>
     <div class="modal-body">
       ${statusNote}
       <div class="v-opts">
@@ -799,39 +808,81 @@ function openEmpDayModal(day) {
         <button class="v-opt-btn opt-pm ${sel('午後半休')}" onclick="selectType(${day},'午後半休')">
           <div class="opt-icon">&#9729;</div><div><div class="opt-label">午後半休</div><div class="opt-desc">午後お休み（午前出勤）</div></div>
         </button>
-        <button class="v-opt-btn opt-jk ${sel('時間休')}" style="flex-wrap:wrap">
+        <div class="v-opt-btn opt-jk ${sel('時間休')}" style="flex-direction:column;align-items:flex-start;cursor:default">
           <div style="display:flex;align-items:center;gap:11px;width:100%">
             <div class="opt-icon">&#8987;</div><div><div class="opt-label">時間休</div><div class="opt-desc">年間残り ${remaining}時間 ／165時間</div></div>
           </div>
-          <div class="hour-btns">${hourBtns}</div>
-        </button>
+          <div class="time-picker">
+            <div class="time-row"><span>開始</span>
+              <select id="tp-sh" class="time-sel" onchange="updateDuration()">${hOpts}</select>時
+              <select id="tp-sm" class="time-sel" onchange="updateDuration()">${mOpts(curStart.split(':')[1])}</select>分
+            </div>
+            <div class="time-row"><span>終了</span>
+              <select id="tp-eh" class="time-sel" onchange="updateDuration()">${ehOpts}</select>時
+              <select id="tp-em" class="time-sel" onchange="updateDuration()">${mOpts(curEnd.split(':')[1])}</select>分
+            </div>
+            <div class="time-duration" id="tp-dur"></div>
+            <button class="time-submit" onclick="submitJikan(${day})">時間休を申請する</button>
+          </div>
+        </div>
       </div>
     </div>
     ${cancelRow}
     <div class="modal-foot"><button class="btn btn-outline" onclick="closeModal()">閉じる</button></div>
   `);
+  updateDuration();
 }
 
-async function selectType(day, type, hours) {
+function timeToMin(h, m) { return Number(h)*60 + Number(m); }
+function minToStr(min) {
+  const h = Math.floor(min/60), m = min%60;
+  return m===0 ? `${h}時間` : `${h}時間${m}分`;
+}
+function updateDuration() {
+  const sh=document.getElementById('tp-sh')?.value, sm=document.getElementById('tp-sm')?.value;
+  const eh=document.getElementById('tp-eh')?.value, em=document.getElementById('tp-em')?.value;
+  const el=document.getElementById('tp-dur'); if(!el||!sh) return;
+  const diff = timeToMin(eh,em) - timeToMin(sh,sm);
+  el.textContent = diff<=0 ? '終了は開始より後にしてください' : `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}〜${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}　${minToStr(diff)}`;
+  el.style.color = diff<=0 ? '#EF4444' : 'var(--jikan)';
+}
+
+async function submitJikan(day) {
   if (isDeadlinePassed()) { toast('締め切りを過ぎています'); return; }
-  if (type === '時間休' && !hours) return; // 時間未選択は無視
-  if (type === '時間休') {
-    const curHours = S.myReqs[day]?.type === '時間休' ? (S.myReqs[day]?.hours || 0) : 0;
-    const remaining = 165 - S.usedHours + curHours;
-    if (hours > remaining) { toast(`年間残り${remaining}時間を超えています`); return; }
-  }
+  const sh=document.getElementById('tp-sh').value, sm=document.getElementById('tp-sm').value;
+  const eh=document.getElementById('tp-eh').value, em=document.getElementById('tp-em').value;
+  const diff = timeToMin(eh,em) - timeToMin(sh,sm);
+  if (diff <= 0) { toast('終了は開始より後にしてください'); return; }
+  if (diff < 60) { toast('最低1時間から申請できます'); return; }
+  const hours = diff/60;
+  const curHours = S.myReqs[day]?.type==='時間休' ? (S.myReqs[day]?.hours||0) : 0;
+  const remaining = 165 - S.usedHours + curHours;
+  if (hours > remaining) { toast(`年間残り${remaining}時間を超えています`); return; }
+  const startTime = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+  const endTime   = `${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`;
   closeModal();
-  const req = S.myReqs[day];
-  if (req?.type === type && (type !== '時間休' || req?.hours === hours)) { await cancelReq(day); return; }
-  const payload = { employee_id: S.user.employee_id, year: S.reqYear, month: S.reqMonth, day, type, status: 'pending', hours: type==='時間休' ? hours : null };
+  const payload = { employee_id: S.user.employee_id, year: S.reqYear, month: S.reqMonth, day,
+    type: '時間休', status: 'pending', hours, start_time: startTime, end_time: endTime };
   const { data, error } = await S.sb.from('vacation_requests').upsert(payload, { onConflict: 'employee_id,year,month,day' }).select('id').single();
   if (error) { toast('エラーが発生しました'); console.error(error); return; }
-  // 年間合計を更新
-  const oldHours = req?.type==='時間休' ? (req?.hours||0) : 0;
-  S.usedHours = S.usedHours - oldHours + (type==='時間休' ? hours : 0);
-  S.myReqs[day] = { type, status: 'pending', id: data?.id, hours: type==='時間休' ? hours : null };
+  S.usedHours = S.usedHours - curHours + hours;
+  S.myReqs[day] = { type:'時間休', status:'pending', id:data?.id, hours, start_time:startTime, end_time:endTime };
   renderEmpCal(); renderStatusSummary();
-  toast(`${S.reqMonth}月${day}日：${type}${type==='時間休'?` ${hours}時間`:''}を申請しました`);
+  toast(`${S.reqMonth}月${day}日：時間休 ${startTime}〜${endTime}を申請しました`);
+}
+
+async function selectType(day, type) {
+  if (isDeadlinePassed()) { toast('締め切りを過ぎています'); return; }
+  closeModal();
+  const req = S.myReqs[day];
+  if (req?.type === type) { await cancelReq(day); return; }
+  const payload = { employee_id: S.user.employee_id, year: S.reqYear, month: S.reqMonth, day, type, status: 'pending', hours: null, start_time: null, end_time: null };
+  const { data, error } = await S.sb.from('vacation_requests').upsert(payload, { onConflict: 'employee_id,year,month,day' }).select('id').single();
+  if (error) { toast('エラーが発生しました'); console.error(error); return; }
+  if (req?.type==='時間休') S.usedHours = Math.max(0, S.usedHours - (req?.hours||0));
+  S.myReqs[day] = { type, status:'pending', id:data?.id };
+  renderEmpCal(); renderStatusSummary();
+  toast(`${S.reqMonth}月${day}日：${type}を申請しました`);
 }
 
 async function cancelReq(day) {
@@ -950,8 +1001,9 @@ function renderAdminCal() {
       const dispName = emp ? emp.name : r.name;
       const color = emp ? emp._color : (r.color || '#888');
       const bdr = r.type==='午前半休'?`border:2px solid var(--gozen)`:r.type==='午後半休'?`border:2px solid var(--gogo)`:r.type==='時間休'?`border:2px solid var(--jikan)`:'';
-      const dotLbl = r.type==='時間休' ? `${dispName.slice(0,1)}${r.hours||'?'}h` : dispName.slice(0,2);
-      return `<div class="emp-dot" style="background:${color};${bdr}" title="${dispName}：${r.type}${r.type==='時間休'?' '+r.hours+'時間':''}">${dotLbl}</div>`;
+      const dotLbl = r.type==='時間休' ? dispName.slice(0,1)+'t' : dispName.slice(0,2);
+      const dotTitle = r.type==='時間休'&&r.start_time ? `${dispName}：${r.start_time}〜${r.end_time}` : `${dispName}：${r.type}`;
+      return `<div class="emp-dot" style="background:${color};${bdr}" title="${dotTitle}">${dotLbl}</div>`;
     }).join('');
     const cnt = reqs.length > 0 ? `<div style="font-size:9px;color:var(--muted)">${reqs.length}件</div>` : '';
     html += `<div class="${cls}" onclick="openAdminDayModal(${d})">
@@ -976,7 +1028,7 @@ function openAdminDayModal(day) {
   if (reqs.length === 0) { toast('この日の申請はありません'); return; }
   const list = reqs.map(r => {
     const cc = r.type==='全休'?'chip-z':r.type==='午前半休'?'chip-am':r.type==='時間休'?'chip-jk':'chip-pm';
-    const lbl = r.type==='全休'?'全休':r.type==='午前半休'?'午前半休':r.type==='時間休'?`時間休 ${r.hours||'?'}時間`:'午後半休';
+    const lbl = r.type==='全休'?'全休':r.type==='午前半休'?'午前半休':r.type==='時間休'?`時間休 ${r.start_time||''}〜${r.end_time||''}`:'午後半休';
     const btns = r.status !== 'approved'
       ? `<button class="btn" style="font-size:12px;padding:4px 10px;background:#10B981;color:#fff;min-height:0" onclick="updateReqStatus('${r.id}','approved')">承認</button>` : '';
     const rbtns = r.status !== 'rejected'
