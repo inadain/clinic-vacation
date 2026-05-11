@@ -254,8 +254,12 @@ body{font-family:-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;background
         現場の運営状況により、すべての希望が通るわけではありません。あらかじめご了承ください。</p>
         <p style="margin-bottom:10px"><strong>■ 重複時の対応</strong><br>
         希望が重なった場合は、対象者同士で調整をお願いすることがあります。</p>
-        <p style="margin-bottom:0"><strong>■ 事前調整</strong><br>
+        <p style="margin-bottom:10px"><strong>■ 事前調整</strong><br>
         入力前の職員間での事前調整は不要です。まずはこのフォームで希望を出してください。</p>
+        <p style="margin-bottom:10px"><strong>■ このフォームについて</strong><br>
+        休み希望のみ受け付けています。勤務希望の申請は受け付けていません。</p>
+        <p style="margin-bottom:0"><strong>■ ご不明な点</strong><br>
+        質問がある場合は直接稲田崇志までお問い合わせください。</p>
       </div>
     </div>
     <div class="month-nav">
@@ -708,7 +712,7 @@ function renderStatusSummary() {
   const el = document.getElementById('status-row');
   const total = counts['全休']+counts['午前半休']+counts['午後半休']+counts['時間休'];
   const remaining = 34 - S.usedHours;
-  const hoursInfo = `<div class="stat-item" style="width:100%;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">時間休　年間使用：<strong style="color:var(--jikan)">${S.usedHours}時間</strong>　残り：<strong>${remaining}時間</strong>　／34時間</div>`;
+  const hoursInfo = S.usedHours > 0 ? `<div class="stat-item" style="width:100%;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">時間休　年間使用：<strong style="color:var(--jikan)">${S.usedHours}時間</strong></div>` : '';
   if (total === 0) { el.innerHTML = '<span style="color:var(--muted);font-size:13px">申請はありません</span>' + hoursInfo; return; }
   el.innerHTML = [
     counts['全休']>0    ? `<div class="stat-item"><div class="leg-dot" style="background:var(--zenkyu);width:11px;height:11px;border-radius:3px"></div>全休 <span class="stat-count" style="color:var(--zenkyu)">${counts['全休']}日</span></div>` : '',
@@ -810,7 +814,7 @@ function openEmpDayModal(day) {
         </button>
         <div class="v-opt-btn opt-jk ${sel('時間休')}" style="flex-direction:column;align-items:flex-start;cursor:default">
           <div style="display:flex;align-items:center;gap:11px;width:100%">
-            <div class="opt-icon">&#8987;</div><div><div class="opt-label">時間休</div><div class="opt-desc">年間残り ${remaining}時間 ／34時間</div></div>
+            <div class="opt-icon">&#8987;</div><div><div class="opt-label">時間休</div><div class="opt-desc">時間を選択してください</div></div>
           </div>
           <div class="time-picker">
             <div class="time-row"><span>開始</span>
@@ -857,7 +861,7 @@ async function submitJikan(day) {
   const hours = diff/60;
   const curHours = S.myReqs[day]?.type==='時間休' ? (S.myReqs[day]?.hours||0) : 0;
   const remaining = 34 - S.usedHours + curHours;
-  if (hours > remaining) { toast(`年間残り${remaining}時間を超えています`); return; }
+  if (hours > remaining) { toast('年間の時間休上限を超えています。管理者（稲田崇志）までご連絡ください。'); return; }
   const startTime = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
   const endTime   = `${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`;
   closeModal();
