@@ -510,11 +510,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Restore session
+  // パスワードが変わっていると前回のログイン状態はもう通らない。
+  // そのまま画面を出すと中身が空になってしまうので、先に確かめる。
   const sess = localStorage.getItem('clinic_sess');
   if (sess) {
     try {
-      S.user = JSON.parse(sess);
-      await showMainView();
+      const saved = JSON.parse(sess);
+      const still = await rpc('clinic_login',
+        { p_id: saved.employee_id, p_hash: saved.password_hash });
+      if (still) {
+        S.user = Object.assign({}, still, { password_hash: saved.password_hash });
+        localStorage.setItem('clinic_sess', JSON.stringify(S.user));
+        await showMainView();
+        return;
+      }
+      localStorage.removeItem('clinic_sess');
+      showPage('page-login');
+      showLoginErr('パスワードが変わっています。入り直してください。');
       return;
     } catch(e) { localStorage.removeItem('clinic_sess'); }
   }
@@ -642,6 +654,21 @@ async function showMainView() {
   if (S.user.is_admin) await showAdminView(); else await showEmployeeView();
 }
 
+function showLoginErr(msg) {
+  const el = document.getElementById('login-err');
+  if (!el) { alert(msg); return; }
+  el.textContent = msg; el.style.display = 'block';
+}
+
+// 使っている最中にパスワードが変わったとき（別の端末で変えた・管理者が変えた）は、
+// 中身が空の画面を出さずにログインへ戻す。
+function sessionGone() {
+  localStorage.removeItem('clinic_sess');
+  S.user = null; S.myReqs = {}; S.allReqs = {};
+  showPage('page-login');
+  showLoginErr('パスワードが変わっています。入り直してください。');
+}
+
 // =============================================
 // EMPLOYEE VIEW
 // =============================================
@@ -739,7 +766,8 @@ async function saveNote() {
 
 async function loadMyReqs() {
   const d = await rpc('clinic_my_month',
-    Object.assign(auth(), { p_year: S.reqYear, p_month: S.reqMonth })) || {};
+    Object.assign(auth(), { p_year: S.reqYear, p_month: S.reqMonth }));
+  if (!d) { sessionGone(); return; }
   S.myReqs = {};
   (d.requests || []).forEach(r => {
     S.myReqs[r.day] = { type: r.type, status: r.status||'pending', id: r.id, hours: r.hours, start_time: r.start_time, end_time: r.end_time, reject_reason: r.reject_reason };
@@ -988,7 +1016,8 @@ async function showAdminView() {
 
 async function loadEmployees() {
   const data = await rpc('clinic_admin_employees', auth());
-  S.employees = data || [];
+  if (!data) { sessionGone(); return; }
+  S.employees = data;
   S.allNotes = {};
   S.employees.forEach((e, i) => { e._color = COLORS[i % COLORS.length]; });
   renderEmpTable();
@@ -996,7 +1025,8 @@ async function loadEmployees() {
 
 async function loadAllReqs() {
   const d = await rpc('clinic_admin_month',
-    Object.assign(auth(), { p_year: S.adminYear, p_month: S.adminMonth })) || {};
+    Object.assign(auth(), { p_year: S.adminYear, p_month: S.adminMonth }));
+  if (!d) { sessionGone(); return; }
   S.finalized = !!d.finalized;   // 確定済みかどうかも一緒に受け取る
   const reqRes  = { data: d.requests  || [] };
   const empRes  = { data: d.employees || [] };
